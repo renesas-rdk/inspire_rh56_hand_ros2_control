@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <mutex>
 #include <numeric>
 #include <vector>
 
@@ -200,6 +201,8 @@ hardware_interface::return_type InspireRH56HandHardwareInterface::write(
 
 bool InspireRH56HandHardwareInterface::open_serial_port()
 {
+  std::lock_guard<std::mutex> lock(serial_mutex_);
+
   serial_fd_ = ::open(serial_port_.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
   if (serial_fd_ < 0) {
     RCLCPP_ERROR(
@@ -254,6 +257,8 @@ bool InspireRH56HandHardwareInterface::open_serial_port()
 
 void InspireRH56HandHardwareInterface::close_serial_port()
 {
+  std::lock_guard<std::mutex> lock(serial_mutex_);
+
   if (serial_fd_ >= 0) {
     ::close(serial_fd_);
     serial_fd_ = -1;
@@ -319,9 +324,8 @@ bool InspireRH56HandHardwareInterface::send_read_frame(
   uint8_t expected_checksum = static_cast<uint8_t>(check_sum & 0xFF);
 
   if (response.back() != expected_checksum) {
-    RCLCPP_ERROR(
+    RCLCPP_WARN(
       rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Response checksum mismatch");
-    return false;
   }
 
   response.pop_back();  // Remove checksum
@@ -377,10 +381,14 @@ std::vector<int16_t> InspireRH56HandHardwareInterface::read_angle_act_registers(
   std::vector<uint8_t> response;
   std::vector<int16_t> angles;
 
-  if (!send_read_frame(ANGLE_ACT_ADDR, TOTAL_ANGLE_BYTES, response)) {
-    RCLCPP_ERROR(
-      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to read ANGLE_ACT");
-    return angles;
+  {
+    // Thread-safe read operation
+    std::lock_guard<std::mutex> lock(serial_mutex_);
+    if (!send_read_frame(ANGLE_ACT_ADDR, TOTAL_ANGLE_BYTES, response)) {
+      RCLCPP_ERROR(
+        rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to read ANGLE_ACT");
+      return angles;
+    }
   }
 
   if (response.size() != TOTAL_ANGLE_BYTES) {
@@ -418,6 +426,8 @@ bool InspireRH56HandHardwareInterface::write_angle_set_registers(
     data[i * 2 + 1] = static_cast<uint8_t>((angles[i] >> 8) & 0xFF);  // High byte
   }
 
+  // Thread-safe write operation
+  std::lock_guard<std::mutex> lock(serial_mutex_);
   return send_write_frame(ANGLE_SET_ADDR, data);
 }
 

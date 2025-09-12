@@ -17,6 +17,8 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -66,6 +68,7 @@ private:
   int serial_fd_;
   int baudrate_;
   uint8_t hand_id_;
+  mutable std::mutex serial_mutex_;
 
   // Protocol constants
   static constexpr uint16_t ANGLE_SET_ADDR = 0x05CE;  // Start address for ANGLE_SET
