@@ -1,0 +1,37 @@
+#pragma once
+
+#ifndef INSPIRE_RH56_HAND_ROS2_CONTROL__VISIBILITY_CONTROL_HPP_
+#define INSPIRE_RH56_HAND_ROS2_CONTROL__VISIBILITY_CONTROL_HPP_
+
+// This logic was borrowed (then namespaced) from the examples on the gcc wiki:
+//     https://gcc.gnu.org/wiki/Visibility
+
+#if defined _WIN32 || defined __CYGWIN__
+#ifdef __GNUC__
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_EXPORT __attribute__((dllexport))
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_IMPORT __attribute__((dllimport))
+#else
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_EXPORT __declspec(dllexport)
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_IMPORT __declspec(dllimport)
+#endif
+#ifdef INSPIRE_RH56_HAND_ROS2_CONTROL_BUILDING_DLL
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_PUBLIC INSPIRE_RH56_HAND_ROS2_CONTROL_EXPORT
+#else
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_PUBLIC INSPIRE_RH56_HAND_ROS2_CONTROL_IMPORT
+#endif
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_PUBLIC_TYPE INSPIRE_RH56_HAND_ROS2_CONTROL_PUBLIC
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_LOCAL
+#else
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_EXPORT __attribute__((visibility("default")))
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_IMPORT
+#if __GNUC__ >= 4
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_PUBLIC __attribute__((visibility("default")))
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_LOCAL __attribute__((visibility("hidden")))
+#else
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_PUBLIC
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_LOCAL
+#endif
+#define INSPIRE_RH56_HAND_ROS2_CONTROL_PUBLIC_TYPE
+#endif
+
+#endif  // INSPIRE_RH56_HAND_ROS2_CONTROL__VISIBILITY_CONTROL_HPP_

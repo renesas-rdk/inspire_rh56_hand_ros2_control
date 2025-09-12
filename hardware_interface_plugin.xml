@@ -1,0 +1,9 @@
+<library path="inspire_rh56_hand_ros2_control_hardware_interface">
+  <class name="inspire_rh56_hand_ros2_control/InspireRH56HandHardwareInterface" type="inspire_rh56_hand_ros2_control::InspireRH56HandHardwareInterface" base_class_type="hardware_interface::SystemInterface">
+    <description>
+      ROS 2 control hardware interface for the Inspire RH56 6-DOF dexterous hand.
+      This hardware interface provides position control for the hand's 6 degrees of freedom
+      via serial communication using the Inspire RH56 protocol.
+    </description>
+  </class>
+</library>
