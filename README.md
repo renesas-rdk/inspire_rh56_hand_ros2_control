@@ -7,7 +7,7 @@ This package provides a ros2_control SystemInterface plugin, URDF/Xacro helpers,
 ## What’s included
 - Hardware plugin: `inspire_rh56_hand_ros2_control/InspireRH56HandHardwareInterface`
 - Plugin XML: `hardware_interface_plugin.xml`
-- URDF/Xacro macro: `urdf/inspire_rh56_hand_ros2_control.xacro`
+- URDF/Xacro macro: `urdf/inspire_rh56_hand_macro.ros2_control.xacro`
 - Launch files:
   - `inspire_rh56_hand_position_control.launch.py` (group position controller)
   - `inspire_rh56_hand_trajectory_control.launch.py` (joint trajectory controller)
@@ -31,7 +31,7 @@ source install/setup.bash
 ## URDF integration (ros2_control)
 Use the Xacro macro to embed ros2_control into your robot:
 ```xml
-<xacro:include filename="$(find inspire_rh56_hand_ros2_control)/urdf/inspire_rh56_hand_ros2_control.xacro"/>
+<xacro:include filename="$(find inspire_rh56_hand_ros2_control)/urdf/inspire_rh56_hand_macro.ros2_control.xacro"/>
 
 <xacro:inspire_rh56_hand_ros2_control
   name="inspire_rh56_hand"
