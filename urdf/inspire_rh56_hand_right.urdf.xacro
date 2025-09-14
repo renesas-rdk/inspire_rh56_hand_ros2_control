@@ -11,12 +11,13 @@
   <xacro:arg name="serial_port" default="/dev/ttyUSB0"/>
   <xacro:arg name="baudrate" default="115200"/>
   <xacro:arg name="use_mock_hardware" default="false"/>
+  <xacro:arg name="prefix" default=""/>
 
   <!-- World link -->
   <link name="world"/>
 
   <!-- Instantiate the right hand -->
-  <xacro:inspire_hand_right parent="world" prefix="">
+  <xacro:inspire_hand_right parent="world" prefix="$(arg prefix)">
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </xacro:inspire_hand_right>
 
@@ -26,4 +27,5 @@
     serial_port="$(arg serial_port)"
     baudrate="$(arg baudrate)"
     use_mock_hardware="$(arg use_mock_hardware)"
+    prefix="$(arg prefix)"
   /></robot>
