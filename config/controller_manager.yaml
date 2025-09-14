@@ -11,8 +11,8 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
-    inspire_hand_joint_trajectory_controller:
+    inspire_rh56_hand_joint_trajectory_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
-    inspire_hand_position_controller:
+    inspire_rh56_hand_joint_position_controller:
       type: position_controllers/JointGroupPositionController

@@ -9,9 +9,9 @@ This package provides a ros2_control SystemInterface plugin, URDF/Xacro helpers,
 - Plugin XML: `hardware_interface_plugin.xml`
 - URDF/Xacro macro: `urdf/inspire_rh56_hand_macro.ros2_control.xacro`
 - Launch files:
-  - `inspire_rh56_hand_position_control.launch.py` (group position controller)
-  - `inspire_rh56_hand_trajectory_control.launch.py` (joint trajectory controller)
-- Controller configs in `config/` and example test scripts in `examples/`
+  - `inspire_rh56_hand_joint_position_control.launch.py` (group position controller)
+  - `inspire_rh56_hand_joint_trajectory_control.launch.py` (joint trajectory controller)
+- Controller configs in `config/` and example test scripts in `test/`
 
 ## Dependencies
 Declared in `package.xml` (key runtime):
@@ -53,12 +53,12 @@ Joint limits are set in the Xacro via command_interface min/max and are used by 
 ## Launch
 Position control (direct positions):
 ```bash
-ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_position_control.launch.py \
+ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_joint_position_control.launch.py \
   serial_port:=/dev/ttyUSB0 baudrate:=115200 hand_side:=left use_mock_hardware:=false
 ```
 Trajectory control (FollowJointTrajectory):
 ```bash
-ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_trajectory_control.launch.py \
+ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_joint_trajectory_control.launch.py \
   serial_port:=/dev/ttyUSB0 baudrate:=115200 hand_side:=left use_mock_hardware:=false
 ```
 Arguments:
@@ -74,23 +74,23 @@ Each launch starts:
 
 ## Control interfaces
 - Group position controller topic:
-  - Publish to: `/inspire_hand_position_controller/commands` (`std_msgs/Float64MultiArray`)
+  - Publish to: `/inspire_rh56_hand_joint_position_controller/commands` (`std_msgs/Float64MultiArray`)
   - Data order: `[thumb_yaw, thumb_pitch, index, middle, ring, pinky]`
 - Joint trajectory controller:
-  - Action: `/inspire_hand_joint_trajectory_controller/follow_joint_trajectory`
-  - Topic: `/inspire_hand_joint_trajectory_controller/joint_trajectory`
+  - Action: `/inspire_rh56_hand_joint_trajectory_controller/follow_joint_trajectory`
+  - Topic: `/inspire_rh56_hand_joint_trajectory_controller/joint_trajectory`
   - Joint names must match the list above
 
 ## Quick examples
 Position command (open/close demo):
 ```bash
-ros2 topic pub /inspire_hand_position_controller/commands std_msgs/msg/Float64MultiArray \
+ros2 topic pub /inspire_rh56_hand_joint_position_controller/commands std_msgs/msg/Float64MultiArray \
   "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
 ```
 
 Trajectory command (single-point goal):
 ```bash
-ros2 action send_goal /inspire_hand_joint_trajectory_controller/follow_joint_trajectory \
+ros2 action send_goal /inspire_rh56_hand_joint_trajectory_controller/follow_joint_trajectory \
   control_msgs/action/FollowJointTrajectory "{trajectory: {joint_names: [thumb_proximal_yaw_joint, thumb_proximal_pitch_joint, index_proximal_joint, middle_proximal_joint, ring_proximal_joint, pinky_proximal_joint], points: [{positions: [1.0, 0.5, 1.4, 1.4, 1.4, 1.4], time_from_start: {sec: 2}}]}}"
 ```
 

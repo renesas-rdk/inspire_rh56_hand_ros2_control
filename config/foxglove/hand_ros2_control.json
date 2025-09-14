@@ -5,7 +5,7 @@
       "buttonTooltip": "",
       "advancedView": true,
       "value": "{\n  \"layout\": {\n    \"dim\": [\n      {\n        \"label\": \"\",\n        \"size\": 0,\n        \"stride\": 0\n      }\n    ],\n    \"data_offset\": 0\n  },\n  \"data\": [\n    1.3, 0.6, 0.0, 0.0, 1.4, 1.4\n  ]\n}",
-      "topicName": "/inspire_hand_position_controller/commands",
+      "topicName": "/inspire_rh56_hand_joint_position_controller/commands",
       "datatype": "std_msgs/msg/Float64MultiArray"
     },
     "RawMessages!1y5fp7v": {

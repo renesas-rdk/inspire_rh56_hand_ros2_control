@@ -22,7 +22,7 @@ class HandPositionTest(Node):
         # Create publisher for the main hand position controller
         self.hand_publisher = self.create_publisher(
             Float64MultiArray,
-            '/inspire_hand_position_controller/commands',
+            '/inspire_rh56_hand_joint_position_controller/commands',
             10
         )
 

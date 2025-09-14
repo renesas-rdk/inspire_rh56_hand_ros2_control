@@ -24,7 +24,7 @@ class HandTrajectoryTest(Node):
         # Create publisher for joint trajectories
         self.trajectory_publisher = self.create_publisher(
             JointTrajectory,
-            '/inspire_hand_joint_trajectory_controller/joint_trajectory',
+            '/inspire_rh56_hand_joint_trajectory_controller/joint_trajectory',
             10
         )
 

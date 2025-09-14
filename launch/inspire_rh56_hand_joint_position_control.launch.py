@@ -28,24 +28,21 @@ This launch file starts:
 
 Usage:
   # For physical hand with serial interface:
-  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_position_control.launch.py
-  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_position_control.launch.py serial_port:=/dev/ttyUSB1
-  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_position_control.launch.py hand_side:=right
-
-  # For individual finger control (separate controllers for each finger):
-  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_position_control.launch.py individual_finger_control:=true
+  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_joint_position_control.launch.py
+  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_joint_position_control.launch.py serial_port:=/dev/ttyUSB1
+  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_joint_position_control.launch.py hand_side:=right
 
   # For SIMULATION/TESTING without physical hand (RECOMMENDED for testing):
-  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_position_control.launch.py use_mock_hardware:=true
+  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_joint_position_control.launch.py use_mock_hardware:=true
 
   Then connect Foxglove Studio to ws://<foxglove_bridge_ip>:8765
 
 Test position commands in another terminal with:
   # Full hand control:
-  ros2 topic pub /inspire_hand_position_controller/commands std_msgs/msg/Float64MultiArray "{data: [1.3, 0.6, 0.0, 0.0, 1.4, 1.4]}"
+  ros2 topic pub -1 /inspire_rh56_hand_joint_position_controller/commands std_msgs/msg/Float64MultiArray "{data: [1.3, 0.6, 0.0, 0.0, 1.4, 1.4]}"
 
 Or run the Python test script:
-  python3 ros2_ws/install/inspire_rh56_hand_ros2_control/share/inspire_rh56_hand_ros2_control/examples/test_hand_position.py
+  python3 ros2_ws/install/inspire_rh56_hand_ros2_control/share/inspire_rh56_hand_ros2_control/test/test_hand_position.py
 
 Observe the hand moving in Foxglove Studio.
 
@@ -103,7 +100,7 @@ def launch_setup(context, *args, **kwargs) -> List[Node]:
     )
 
     position_controller_config = os.path.join(
-        pkg_share, 'config', 'joint_group_position_controller.yaml'
+        pkg_share, 'config', 'inspire_rh56_hand_joint_position_controller.yaml'
     )
 
     # Foxglove bridge launch file
@@ -152,7 +149,7 @@ def launch_setup(context, *args, **kwargs) -> List[Node]:
             name='position_controller_spawner',
             output='screen',
             arguments=[
-                'inspire_hand_position_controller',
+                'inspire_rh56_hand_joint_position_controller',
                 '--controller-manager', '/controller_manager',
                 '--param-file', position_controller_config,
             ],

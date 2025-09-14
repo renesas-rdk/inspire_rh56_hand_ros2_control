@@ -1,7 +1,7 @@
 # Joint Group Position Controller Configuration for Inspire RH56 Hand
 # This controller provides direct position commands to all hand joints
 
-inspire_hand_position_controller:
+inspire_rh56_hand_joint_position_controller:
   ros__parameters:
     # Joint specification
     joints:

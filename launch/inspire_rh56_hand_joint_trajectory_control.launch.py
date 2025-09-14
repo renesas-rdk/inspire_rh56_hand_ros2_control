@@ -28,17 +28,17 @@ This launch file starts:
 
 Usage:
   # For physical hand with serial interface:
-  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_trajectory_control.launch.py
-  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_trajectory_control.launch.py serial_port:=/dev/ttyUSB1
-  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_trajectory_control.launch.py hand_side:=right
+  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_joint_trajectory_control.launch.py
+  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_joint_trajectory_control.launch.py serial_port:=/dev/ttyUSB1
+  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_joint_trajectory_control.launch.py hand_side:=right
 
   # For SIMULATION/TESTING without physical hand (RECOMMENDED for testing):
-  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_trajectory_control.launch.py use_mock_hardware:=true
+  ros2 launch inspire_rh56_hand_ros2_control inspire_rh56_hand_joint_trajectory_control.launch.py use_mock_hardware:=true
 
   Then connect Foxglove Studio to ws://<foxglove_bridge_ip>:8765
 
 Test trajectory in another terminal with:
-  ros2 action send_goal /inspire_hand_joint_trajectory_controller/follow_joint_trajectory control_msgs/action/FollowJointTrajectory "{
+  ros2 action send_goal /inspire_rh56_hand_joint_trajectory_controller/follow_joint_trajectory control_msgs/action/FollowJointTrajectory "{
     trajectory: {
       joint_names: [thumb_proximal_yaw_joint, thumb_proximal_pitch_joint, index_proximal_joint, middle_proximal_joint, ring_proximal_joint, pinky_proximal_joint],
       points: [
@@ -51,7 +51,7 @@ Test trajectory in another terminal with:
   }"
 
 Or run the Python test script:
-  python3 ros2_ws/install/inspire_rh56_hand_ros2_control/share/inspire_rh56_hand_ros2_control/examples/test_hand_trajectory.py
+  python3 ros2_ws/install/inspire_rh56_hand_ros2_control/share/inspire_rh56_hand_ros2_control/test/test_hand_trajectory.py
 
 Observe the hand moving in Foxglove Studio.
 
@@ -109,7 +109,7 @@ def launch_setup(context, *args, **kwargs) -> List[Node]:
     )
 
     joint_trajectory_config = os.path.join(
-        pkg_share, 'config', 'joint_trajectory_controller.yaml'
+        pkg_share, 'config', 'inspire_rh56_hand_joint_trajectory_controller.yaml'
     )
 
     # Foxglove bridge launch file
@@ -158,7 +158,7 @@ def launch_setup(context, *args, **kwargs) -> List[Node]:
             name='joint_trajectory_controller_spawner',
             output='screen',
             arguments=[
-                'inspire_hand_joint_trajectory_controller',
+                'inspire_rh56_hand_joint_trajectory_controller',
                 '--controller-manager', '/controller_manager',
                 '--param-file', joint_trajectory_config,
             ],
