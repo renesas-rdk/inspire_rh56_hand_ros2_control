@@ -46,13 +46,11 @@ install(
   DESTINATION include
 )
 
-# Install config, launch, urdf, and test files
+# Install urdf and config files for ros2_control
 install(
   DIRECTORY
     config
-    launch
     urdf
-    test
   DESTINATION share/${PROJECT_NAME}
 )
 
