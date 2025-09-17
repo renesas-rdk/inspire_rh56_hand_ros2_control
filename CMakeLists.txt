@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.8)
 project(inspire_rh56_hand_ros2_control)
 
+set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ON)
+
 # Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
