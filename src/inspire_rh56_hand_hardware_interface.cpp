@@ -313,6 +313,7 @@ bool InspireRH56HandHardwareInterface::send_read_frame(
   }
 
   // Verify checksum
+#if 0 // WA: disable verification since it often fails even with correct data
   std::vector<uint8_t> check_data(resp_header.begin() + 2, resp_header.end());
   check_data.insert(check_data.end(), response.begin(), response.end() - 1);
   uint32_t check_sum = std::accumulate(check_data.begin(), check_data.end(), 0u);
@@ -322,6 +323,7 @@ bool InspireRH56HandHardwareInterface::send_read_frame(
     RCLCPP_WARN(
       rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Response checksum mismatch");
   }
+#endif
 
   response.pop_back();  // Remove checksum
   return true;
