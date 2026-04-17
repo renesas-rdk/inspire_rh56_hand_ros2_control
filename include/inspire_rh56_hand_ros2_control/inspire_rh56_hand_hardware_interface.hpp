@@ -72,6 +72,7 @@ private:
   // Protocol constants
   static constexpr uint16_t ANGLE_SET_ADDR = 0x05CE;  // Start address for ANGLE_SET
   static constexpr uint16_t ANGLE_ACT_ADDR = 0x060A;  // Start address for ANGLE_ACT
+  static constexpr uint16_t SPEED_SET_ADDR = 0x05F2;  // Start address for SPEED_SET
   static constexpr uint8_t NUM_JOINTS = 6;
   static constexpr uint8_t BYTES_PER_JOINT = 2;  // 16-bit values
   static constexpr uint8_t TOTAL_ANGLE_BYTES = NUM_JOINTS * BYTES_PER_JOINT;
@@ -101,6 +102,9 @@ private:
   std::vector<double> hw_commands_;
   std::vector<double> hw_positions_;
   std::vector<double> hw_velocities_;
+
+  // Configuration
+  int hand_speed_;  // Target speed for all joints (0-1000), set once at activation
 
   // State tracking
   bool first_read_completed_;

@@ -45,9 +45,15 @@ hardware_interface::CallbackReturn InspireRH56HandHardwareInterface::on_init(
   baudrate_ = std::stoi(info_.hardware_parameters.at("baudrate"));
   hand_id_ = 1;  // Default hand ID
 
+  // Parse optional hand_speed parameter (0-1000, default 1000 = max speed)
+  auto it = info_.hardware_parameters.find("hand_speed");
+  hand_speed_ = (it != info_.hardware_parameters.end()) ? std::stoi(it->second) : 1000;
+  hand_speed_ = std::max(0, std::min(1000, hand_speed_));
+
   RCLCPP_INFO(
     rclcpp::get_logger("InspireRH56HandHardwareInterface"),
-    "Serial port: %s, Baudrate: %d, Hand ID: %d", serial_port_.c_str(), baudrate_, hand_id_);
+    "Serial port: %s, Baudrate: %d, Hand ID: %d, Hand speed: %d", serial_port_.c_str(), baudrate_,
+    hand_id_, hand_speed_);
 
   // Initialize joint vectors
   hw_commands_.resize(info_.joints.size(), 0.0);
@@ -144,6 +150,60 @@ hardware_interface::CallbackReturn InspireRH56HandHardwareInterface::on_activate
   angle_write_frame_[4] = 0x12;
   angle_write_frame_[5] = static_cast<uint8_t>(ANGLE_SET_ADDR & 0xFF);
   angle_write_frame_[6] = static_cast<uint8_t>((ANGLE_SET_ADDR >> 8) & 0xFF);
+
+  // Set target speed for all joints (one-time configuration).
+  // Register 1522-1533: 6x short, range 0-1000 (1000 = approx 800ms full travel).
+  {
+    constexpr size_t SPEED_DATA_LEN = TOTAL_ANGLE_BYTES;         // 12 bytes (6x int16)
+    constexpr size_t SPEED_FRAME_SIZE = 7 + SPEED_DATA_LEN + 1;  // header(7) + data + checksum
+    std::array<uint8_t, SPEED_FRAME_SIZE> speed_frame{};
+    speed_frame[0] = 0xEB;
+    speed_frame[1] = 0x90;
+    speed_frame[2] = hand_id_;
+    speed_frame[3] = static_cast<uint8_t>(SPEED_DATA_LEN + 3);
+    speed_frame[4] = 0x12;  // write command
+    speed_frame[5] = static_cast<uint8_t>(SPEED_SET_ADDR & 0xFF);
+    speed_frame[6] = static_cast<uint8_t>((SPEED_SET_ADDR >> 8) & 0xFF);
+    int16_t spd = static_cast<int16_t>(hand_speed_);
+    for (size_t i = 0; i < NUM_JOINTS; ++i) {
+      speed_frame[7 + i * 2] = static_cast<uint8_t>(spd & 0xFF);
+      speed_frame[7 + i * 2 + 1] = static_cast<uint8_t>((spd >> 8) & 0xFF);
+    }
+    uint32_t spd_sum = 0;
+    for (size_t i = 2; i < SPEED_FRAME_SIZE - 1; ++i) {
+      spd_sum += speed_frame[i];
+    }
+    speed_frame[SPEED_FRAME_SIZE - 1] = static_cast<uint8_t>(spd_sum & 0xFF);
+
+    if (
+      ::write(serial_fd_, speed_frame.data(), SPEED_FRAME_SIZE) !=
+      static_cast<ssize_t>(SPEED_FRAME_SIZE)) {
+      RCLCPP_ERROR(
+        rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to send speed set frame");
+      close_serial_port();
+      return CallbackReturn::ERROR;
+    }
+
+    std::array<uint8_t, 9> speed_ack{};
+    if (!read_exact(speed_ack.data(), speed_ack.size())) {
+      RCLCPP_ERROR(
+        rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to read speed set ACK");
+      close_serial_port();
+      return CallbackReturn::ERROR;
+    }
+
+    if (
+      speed_ack[0] != 0x90 || speed_ack[1] != 0xEB || speed_ack[2] != hand_id_ ||
+      speed_ack[4] != 0x12) {
+      RCLCPP_ERROR(rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Invalid speed set ACK");
+      close_serial_port();
+      return CallbackReturn::ERROR;
+    }
+
+    RCLCPP_INFO(
+      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Set all joints target speed to %d",
+      hand_speed_);
+  }
 
   // Force first write by invalidating last written values
   last_written_angles_.fill(-1);

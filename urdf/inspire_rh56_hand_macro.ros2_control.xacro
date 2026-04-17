@@ -11,6 +11,7 @@
     name:=inspire_rh56_hand
     serial_port:=/dev/ttyUSB0
     baudrate:=115200
+    hand_speed:=1000
     use_mock_hardware:=false
     prefix:=''
     ">
@@ -27,6 +28,7 @@
           <plugin>inspire_rh56_hand_ros2_control/InspireRH56HandHardwareInterface</plugin>
           <param name="serial_port">${serial_port}</param>
           <param name="baudrate">${baudrate}</param>
+          <param name="hand_speed">${hand_speed}</param>
         </xacro:unless>
       </hardware>
 
