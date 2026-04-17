@@ -39,7 +39,8 @@ public:
   RCLCPP_SHARED_PTR_DEFINITIONS(InspireRH56HandHardwareInterface)
 
   INSPIRE_RH56_HAND_ROS2_CONTROL_PUBLIC
-  CallbackReturn on_init(const hardware_interface::HardwareComponentInterfaceParams & params) override;
+  CallbackReturn on_init(
+    const hardware_interface::HardwareComponentInterfaceParams & params) override;
 
   INSPIRE_RH56_HAND_ROS2_CONTROL_PUBLIC
   std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
@@ -75,6 +76,12 @@ private:
   static constexpr uint8_t BYTES_PER_JOINT = 2;  // 16-bit values
   static constexpr uint8_t TOTAL_ANGLE_BYTES = NUM_JOINTS * BYTES_PER_JOINT;
 
+  // Pre-computed frame sizes for control loop I/O
+  static constexpr size_t ANGLE_READ_FRAME_SIZE = 9;
+  static constexpr size_t ANGLE_READ_RESP_SIZE = 7 + TOTAL_ANGLE_BYTES + 1;
+  static constexpr size_t ANGLE_WRITE_FRAME_SIZE = 7 + TOTAL_ANGLE_BYTES + 1;
+  static constexpr size_t ANGLE_WRITE_ACK_SIZE = 9;
+
   // Hardware to URDF joint mapping
   // The hardware registers are in a different order than the URDF joint definitions:
   //
@@ -88,7 +95,6 @@ private:
   //           5            | thumb_yaw     |        0
   //
   // These mapping arrays provide constant-time translation between the two orderings
-  static constexpr std::array<size_t, NUM_JOINTS> HW_TO_URDF_MAP = {5, 4, 3, 2, 1, 0};
   static constexpr std::array<size_t, NUM_JOINTS> URDF_TO_HW_MAP = {5, 4, 3, 2, 1, 0};
 
   // Joint data
@@ -103,19 +109,25 @@ private:
   std::vector<double> joint_min_limits_;
   std::vector<double> joint_max_limits_;
 
+  // Pre-allocated control loop buffers (avoid per-cycle heap allocation)
+  std::array<int16_t, NUM_JOINTS> angle_read_buf_{};
+  std::array<int16_t, NUM_JOINTS> angle_write_buf_{};
+  std::array<int16_t, NUM_JOINTS> last_written_angles_{};
+  std::array<double, NUM_JOINTS> prev_positions_{};
+  std::array<uint8_t, ANGLE_READ_FRAME_SIZE> angle_read_frame_{};
+  std::array<uint8_t, ANGLE_READ_RESP_SIZE> angle_read_resp_buf_{};
+  std::array<uint8_t, ANGLE_WRITE_FRAME_SIZE> angle_write_frame_{};
+  std::array<uint8_t, ANGLE_WRITE_ACK_SIZE> angle_write_ack_buf_{};
+
   // Helper functions
   bool open_serial_port();
   void close_serial_port();
-  bool write_angle_set_registers(const std::vector<int16_t> & angles);
-  std::vector<int16_t> read_angle_act_registers();
-  bool send_read_frame(uint16_t address, uint8_t length, std::vector<uint8_t> & response);
-  bool send_write_frame(uint16_t address, const std::vector<uint8_t> & data);
   int16_t position_to_hardware_value(double position, size_t joint_index);
   double hardware_value_to_position(int16_t hw_value, size_t joint_index);
+  bool read_exact(uint8_t * buf, size_t count);
 
-  // Mapping helper functions for better code readability
+  // Mapping helper function for better code readability
   inline size_t urdf_to_hw_index(size_t urdf_index) const { return URDF_TO_HW_MAP[urdf_index]; }
-  inline size_t hw_to_urdf_index(size_t hw_index) const { return HW_TO_URDF_MAP[hw_index]; }
 };
 
 }  // namespace inspire_rh56_hand_ros2_control

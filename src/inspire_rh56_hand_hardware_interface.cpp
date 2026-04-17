@@ -25,8 +25,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <memory>
-#include <numeric>
 #include <vector>
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
@@ -58,6 +56,9 @@ hardware_interface::CallbackReturn InspireRH56HandHardwareInterface::on_init(
 
   // Initialize state tracking
   first_read_completed_ = false;
+
+  // Initialize last_written_angles_ to invalid value to force first write
+  last_written_angles_.fill(-1);
 
   // Initialize joint limits from URDF/XACRO definitions
   joint_min_limits_.resize(info_.joints.size());
@@ -120,6 +121,33 @@ hardware_interface::CallbackReturn InspireRH56HandHardwareInterface::on_activate
     return CallbackReturn::ERROR;
   }
 
+  // Pre-build the ANGLE_ACT read request frame (constant across all cycles)
+  angle_read_frame_[0] = 0xEB;
+  angle_read_frame_[1] = 0x90;
+  angle_read_frame_[2] = hand_id_;
+  angle_read_frame_[3] = 0x04;
+  angle_read_frame_[4] = 0x11;
+  angle_read_frame_[5] = static_cast<uint8_t>(ANGLE_ACT_ADDR & 0xFF);
+  angle_read_frame_[6] = static_cast<uint8_t>((ANGLE_ACT_ADDR >> 8) & 0xFF);
+  angle_read_frame_[7] = TOTAL_ANGLE_BYTES;
+  uint32_t rd_sum = 0;
+  for (size_t i = 2; i < ANGLE_READ_FRAME_SIZE - 1; ++i) {
+    rd_sum += angle_read_frame_[i];
+  }
+  angle_read_frame_[ANGLE_READ_FRAME_SIZE - 1] = static_cast<uint8_t>(rd_sum & 0xFF);
+
+  // Pre-build the ANGLE_SET write frame template (data + checksum updated each cycle)
+  angle_write_frame_[0] = 0xEB;
+  angle_write_frame_[1] = 0x90;
+  angle_write_frame_[2] = hand_id_;
+  angle_write_frame_[3] = static_cast<uint8_t>(TOTAL_ANGLE_BYTES + 3);
+  angle_write_frame_[4] = 0x12;
+  angle_write_frame_[5] = static_cast<uint8_t>(ANGLE_SET_ADDR & 0xFF);
+  angle_write_frame_[6] = static_cast<uint8_t>((ANGLE_SET_ADDR >> 8) & 0xFF);
+
+  // Force first write by invalidating last written values
+  last_written_angles_.fill(-1);
+
   // Reset state tracking - let first read() call initialize positions
   first_read_completed_ = false;
 
@@ -138,27 +166,50 @@ hardware_interface::CallbackReturn InspireRH56HandHardwareInterface::on_deactiva
 hardware_interface::return_type InspireRH56HandHardwareInterface::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
-  // Read current angles from ANGLE_ACT registers
-  auto current_angles = read_angle_act_registers();
-  if (current_angles.size() != NUM_JOINTS) {
+  // Send pre-built ANGLE_ACT read frame (no per-cycle frame construction)
+  if (
+    ::write(serial_fd_, angle_read_frame_.data(), ANGLE_READ_FRAME_SIZE) !=
+    static_cast<ssize_t>(ANGLE_READ_FRAME_SIZE)) {
     RCLCPP_WARN(
-      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to read joint positions");
+      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to send angle read frame");
     return hardware_interface::return_type::ERROR;
   }
 
-  // Store previous positions for velocity calculation
-  std::vector<double> prev_positions = hw_positions_;
+  // Read full response in one robust call (no two-phase header + data reads)
+  if (!read_exact(angle_read_resp_buf_.data(), ANGLE_READ_RESP_SIZE)) {
+    RCLCPP_WARN(
+      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to read angle response");
+    return hardware_interface::return_type::ERROR;
+  }
+
+  // Verify response header
+  if (
+    angle_read_resp_buf_[0] != 0x90 || angle_read_resp_buf_[1] != 0xEB ||
+    angle_read_resp_buf_[2] != hand_id_ || angle_read_resp_buf_[4] != 0x11) {
+    RCLCPP_WARN(
+      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Invalid angle response header");
+    return hardware_interface::return_type::ERROR;
+  }
+
+  // Parse angles directly from response (data starts at offset 7, pre-allocated buffer)
+  for (size_t i = 0; i < NUM_JOINTS; ++i) {
+    angle_read_buf_[i] = static_cast<int16_t>(
+      angle_read_resp_buf_[7 + i * 2] | (angle_read_resp_buf_[7 + i * 2 + 1] << 8));
+  }
+
+  // Store previous positions using pre-allocated buffer (no heap allocation)
+  std::copy(hw_positions_.begin(), hw_positions_.end(), prev_positions_.begin());
 
   // Convert hardware values to joint positions
   for (size_t urdf_idx = 0; urdf_idx < NUM_JOINTS; ++urdf_idx) {
     size_t hw_idx = urdf_to_hw_index(urdf_idx);
-    hw_positions_[urdf_idx] = hardware_value_to_position(current_angles[hw_idx], urdf_idx);
+    hw_positions_[urdf_idx] = hardware_value_to_position(angle_read_buf_[hw_idx], urdf_idx);
   }
 
   // Calculate joint velocities using finite difference
   if (first_read_completed_ && period.seconds() > 0.0) {
     for (size_t i = 0; i < NUM_JOINTS; ++i) {
-      hw_velocities_[i] = (hw_positions_[i] - prev_positions[i]) / period.seconds();
+      hw_velocities_[i] = (hw_positions_[i] - prev_positions_[i]) / period.seconds();
     }
   } else {
     std::fill(hw_velocities_.begin(), hw_velocities_.end(), 0.0);
@@ -179,18 +230,52 @@ hardware_interface::return_type InspireRH56HandHardwareInterface::read(
 hardware_interface::return_type InspireRH56HandHardwareInterface::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  // Convert URDF joint commands to hardware register values
-  std::vector<int16_t> target_angles(NUM_JOINTS);
+  // Convert URDF joint commands to hardware register values (pre-allocated buffer)
   for (size_t urdf_idx = 0; urdf_idx < NUM_JOINTS; ++urdf_idx) {
     size_t hw_idx = urdf_to_hw_index(urdf_idx);
-    target_angles[hw_idx] = position_to_hardware_value(hw_commands_[urdf_idx], urdf_idx);
+    angle_write_buf_[hw_idx] = position_to_hardware_value(hw_commands_[urdf_idx], urdf_idx);
   }
 
-  // Write to ANGLE_SET registers
-  if (!write_angle_set_registers(target_angles)) {
-    RCLCPP_WARN(
-      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to write joint commands");
-    return hardware_interface::return_type::ERROR;
+  // Skip serial I/O if commands haven't changed since last successful write
+  if (angle_write_buf_ != last_written_angles_) {
+    // Update data portion of pre-built write frame
+    for (size_t i = 0; i < NUM_JOINTS; ++i) {
+      angle_write_frame_[7 + i * 2] = static_cast<uint8_t>(angle_write_buf_[i] & 0xFF);
+      angle_write_frame_[7 + i * 2 + 1] = static_cast<uint8_t>((angle_write_buf_[i] >> 8) & 0xFF);
+    }
+
+    // Recalculate checksum (bytes from index 2 to end-1)
+    uint32_t sum = 0;
+    for (size_t i = 2; i < ANGLE_WRITE_FRAME_SIZE - 1; ++i) {
+      sum += angle_write_frame_[i];
+    }
+    angle_write_frame_[ANGLE_WRITE_FRAME_SIZE - 1] = static_cast<uint8_t>(sum & 0xFF);
+
+    // Send pre-built frame
+    if (
+      ::write(serial_fd_, angle_write_frame_.data(), ANGLE_WRITE_FRAME_SIZE) !=
+      static_cast<ssize_t>(ANGLE_WRITE_FRAME_SIZE)) {
+      RCLCPP_WARN(
+        rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to send write frame");
+      return hardware_interface::return_type::ERROR;
+    }
+
+    // Read ACK using robust read (pre-allocated buffer)
+    if (!read_exact(angle_write_ack_buf_.data(), ANGLE_WRITE_ACK_SIZE)) {
+      RCLCPP_WARN(
+        rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to read write ACK");
+      return hardware_interface::return_type::ERROR;
+    }
+
+    if (
+      angle_write_ack_buf_[0] != 0x90 || angle_write_ack_buf_[1] != 0xEB ||
+      angle_write_ack_buf_[2] != hand_id_ || angle_write_ack_buf_[4] != 0x12) {
+      RCLCPP_WARN(rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Invalid write ACK");
+      return hardware_interface::return_type::ERROR;
+    }
+
+    // Remember last written values for change detection
+    last_written_angles_ = angle_write_buf_;
   }
 
   return hardware_interface::return_type::OK;
@@ -260,166 +345,17 @@ void InspireRH56HandHardwareInterface::close_serial_port()
   }
 }
 
-bool InspireRH56HandHardwareInterface::send_read_frame(
-  uint16_t address, uint8_t length, std::vector<uint8_t> & response)
+bool InspireRH56HandHardwareInterface::read_exact(uint8_t * buf, size_t count)
 {
-  // Read frame: EB 90 | ID | 04 | 11 | Addr_L | Addr_H | Len | Chk
-  std::vector<uint8_t> frame = {
-    0xEB,
-    0x90,                                         // Header
-    hand_id_,                                     // Hand ID
-    0x04,                                         // Fixed length for read command
-    0x11,                                         // Read command
-    static_cast<uint8_t>(address & 0xFF),         // Address low byte
-    static_cast<uint8_t>((address >> 8) & 0xFF),  // Address high byte
-    length                                        // Data length to read
-  };
-
-  // Calculate checksum
-  uint32_t sum = std::accumulate(frame.begin() + 2, frame.end(), 0u);
-  uint8_t checksum = static_cast<uint8_t>(sum & 0xFF);
-  frame.push_back(checksum);
-
-  // Send frame
-  if (::write(serial_fd_, frame.data(), frame.size()) != static_cast<ssize_t>(frame.size())) {
-    RCLCPP_ERROR(
-      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to send read frame");
-    return false;
+  size_t total = 0;
+  while (total < count) {
+    ssize_t n = ::read(serial_fd_, buf + total, count - total);
+    if (n <= 0) {
+      return false;
+    }
+    total += static_cast<size_t>(n);
   }
-
-  // Read response: 90 EB | ID | Len | 0x11 | Addr_L | Addr_H | Data... | Chk
-  std::vector<uint8_t> resp_header(7);
-  if (::read(serial_fd_, resp_header.data(), 7) != 7) {
-    RCLCPP_ERROR(
-      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to read response header");
-    return false;
-  }
-
-  // Verify response header
-  if (
-    resp_header[0] != 0x90 || resp_header[1] != 0xEB || resp_header[2] != hand_id_ ||
-    resp_header[4] != 0x11) {
-    RCLCPP_ERROR(rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Invalid response header");
-    return false;
-  }
-
-  uint8_t resp_length = resp_header[3] - 3;
-  response.resize(resp_length + 1);  // +1 for checksum
-
-  if (::read(serial_fd_, response.data(), resp_length + 1) != resp_length + 1) {
-    RCLCPP_ERROR(
-      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to read response data");
-    return false;
-  }
-
-  // Verify checksum
-#if 0 // WA: disable verification since it often fails even with correct data
-  std::vector<uint8_t> check_data(resp_header.begin() + 2, resp_header.end());
-  check_data.insert(check_data.end(), response.begin(), response.end() - 1);
-  uint32_t check_sum = std::accumulate(check_data.begin(), check_data.end(), 0u);
-  uint8_t expected_checksum = static_cast<uint8_t>(check_sum & 0xFF);
-
-  if (response.back() != expected_checksum) {
-    RCLCPP_WARN(
-      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Response checksum mismatch");
-  }
-#endif
-
-  response.pop_back();  // Remove checksum
   return true;
-}
-
-bool InspireRH56HandHardwareInterface::send_write_frame(
-  uint16_t address, const std::vector<uint8_t> & data)
-{
-  // Write frame: EB 90 | ID | (Len=DataLen+3) | 0x12 | Addr_L | Addr_H | Data... | Chk
-  std::vector<uint8_t> frame = {
-    0xEB,
-    0x90,                                        // Header
-    hand_id_,                                    // Hand ID
-    static_cast<uint8_t>(data.size() + 3),       // Length = data + 3 bytes (cmd + addr)
-    0x12,                                        // Write command
-    static_cast<uint8_t>(address & 0xFF),        // Address low byte
-    static_cast<uint8_t>((address >> 8) & 0xFF)  // Address high byte
-  };
-
-  // Add data
-  frame.insert(frame.end(), data.begin(), data.end());
-
-  // Calculate checksum
-  uint32_t sum = std::accumulate(frame.begin() + 2, frame.end(), 0u);
-  uint8_t checksum = static_cast<uint8_t>(sum & 0xFF);
-  frame.push_back(checksum);
-
-  // Send frame
-  if (::write(serial_fd_, frame.data(), frame.size()) != static_cast<ssize_t>(frame.size())) {
-    RCLCPP_ERROR(
-      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to send write frame");
-    return false;
-  }
-
-  // Read ACK response: 90 EB | ID | 0x4 | 0x12 | Addr_L | Addr_H | 0x1 | Chk
-  std::vector<uint8_t> ack(9);
-  if (::read(serial_fd_, ack.data(), 9) != 9) {
-    RCLCPP_ERROR(rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to read ACK");
-    return false;
-  }
-
-  if (ack[0] != 0x90 || ack[1] != 0xEB || ack[2] != hand_id_ || ack[4] != 0x12) {
-    RCLCPP_ERROR(rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Invalid ACK response");
-    return false;
-  }
-
-  return true;
-}
-
-std::vector<int16_t> InspireRH56HandHardwareInterface::read_angle_act_registers()
-{
-  std::vector<uint8_t> response;
-  std::vector<int16_t> angles;
-
-  if (!send_read_frame(ANGLE_ACT_ADDR, TOTAL_ANGLE_BYTES, response)) {
-    RCLCPP_ERROR(
-      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Failed to read ANGLE_ACT");
-    return angles;
-  }
-
-  if (response.size() != TOTAL_ANGLE_BYTES) {
-    RCLCPP_ERROR(
-      rclcpp::get_logger("InspireRH56HandHardwareInterface"),
-      "Invalid ANGLE_ACT response size: %zu", response.size());
-    return angles;
-  }
-
-  // Convert little-endian bytes to int16_t values
-  angles.resize(NUM_JOINTS);
-  for (size_t i = 0; i < NUM_JOINTS; ++i) {
-    uint8_t low_byte = response[i * 2];
-    uint8_t high_byte = response[i * 2 + 1];
-    angles[i] = static_cast<int16_t>(low_byte | (high_byte << 8));
-  }
-
-  return angles;
-}
-
-bool InspireRH56HandHardwareInterface::write_angle_set_registers(
-  const std::vector<int16_t> & angles)
-{
-  if (angles.size() != NUM_JOINTS) {
-    RCLCPP_ERROR(
-      rclcpp::get_logger("InspireRH56HandHardwareInterface"), "Invalid angles vector size: %zu",
-      angles.size());
-    return false;
-  }
-
-  // Convert int16_t values to little-endian bytes
-  std::vector<uint8_t> data(TOTAL_ANGLE_BYTES);
-  for (size_t i = 0; i < NUM_JOINTS; ++i) {
-    data[i * 2] = static_cast<uint8_t>(angles[i] & 0xFF);             // Low byte
-    data[i * 2 + 1] = static_cast<uint8_t>((angles[i] >> 8) & 0xFF);  // High byte
-  }
-
-  return send_write_frame(ANGLE_SET_ADDR, data);
 }
 
 int16_t InspireRH56HandHardwareInterface::position_to_hardware_value(
